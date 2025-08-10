@@ -1,0 +1,687 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Milo — Full Chat (Fixed Composer & Proper Scroll)</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&family=Orbitron:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg1:#5b0f7a; --bg2:#ff5fa1;
+  --accent-c:#00f0ff; --accent-p:#ff00c8;
+  --card-w:1100px; --height:82vh;
+  --scroll-thumb: rgba(255,255,255,0.12);
+  --glass-a: rgba(255,255,255,0.03);
+  --glass-b: rgba(255,255,255,0.015);
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial; -webkit-font-smoothing:antialiased;background: linear-gradient(135deg,var(--bg1),var(--bg2)); background-size:400% 400%; animation:grad 24s ease infinite;}
+@keyframes grad{0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%}}
+body{display:flex;align-items:center;justify-content:center;padding:28px 12px;}
+
+/* APP WRAP (tilts) */
+.app-wrap{ width:min(var(--card-w),98%); position:relative; display:flex; flex-direction:column; gap:12px; transform-style:preserve-3d; }
+.app {
+  height: var(--height);
+  border-radius:18px; padding:18px; position:relative; overflow:hidden;
+  background: linear-gradient(180deg,var(--glass-a),var(--glass-b));
+  border:1px solid rgba(255,255,255,0.06);
+  box-shadow: 0 40px 80px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.02);
+  backdrop-filter: blur(16px) saturate(130%);
+  display:grid; grid-template-rows:auto 1fr; gap:12px;
+}
+
+/* soft orbs */
+.orb{ position:absolute; border-radius:50%; filter: blur(80px); opacity:0.62; pointer-events:none; z-index:0; }
+.orb.o1{ width:420px;height:420px; left:-120px; top:-80px; background: rgba(0,240,255,0.12); }
+.orb.o2{ width:300px;height:300px; right:-80px; bottom:-80px; background: rgba(255,0,200,0.10); }
+
+/* HEADER */
+.header{ display:flex; justify-content:space-between; align-items:center; gap:12px; z-index:2; }
+.brand{ display:flex; gap:12px; align-items:center; }
+.logo{ width:58px; height:58px; border-radius:12px; display:flex; align-items:center; justify-content:center; font-family:Orbitron; font-weight:700; color:#fff; background: linear-gradient(135deg, rgba(0,240,255,0.12), rgba(255,0,200,0.08)); border:1px solid rgba(255,255,255,0.05); }
+.title .name{ font-family:Orbitron; font-size:18px }
+.title .sub { font-size:12px; opacity:0.9; margin-top:2px; }
+.status { padding:8px 12px; border-radius:999px; font-weight:600; background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.03); }
+
+/* layout */
+.main{ display:flex; gap:18px; height:100%; align-items:stretch; z-index:1; min-width:0; }
+.left{ flex:1.6; display:flex; flex-direction:column; gap:12px; min-width:0; }
+.right{ flex:0.95; display:flex; flex-direction:column; gap:12px; min-width:260px; }
+
+/* messages scrollable area (independent) */
+.messages{
+  flex:1; padding:18px; border-radius:12px; background: linear-gradient(180deg, rgba(0,0,0,0.12), rgba(255,255,255,0.01));
+  border:1px solid rgba(255,255,255,0.02); overflow:auto; display:flex; flex-direction:column; gap:12px;
+  scroll-behavior:smooth;
+  /* bottom padding will be set dynamically to composer height */
+}
+.messages::-webkit-scrollbar{ width:12px; }
+.messages::-webkit-scrollbar-thumb{ background: var(--scroll-thumb); border-radius:10px; border:3px solid transparent; background-clip: padding-box; }
+.messages{ scrollbar-width: thin; scrollbar-color: var(--scroll-thumb) transparent; }
+
+/* bubble row + avatars */
+.bubble-row{ display:flex; gap:12px; align-items:flex-end; }
+.avatar{ width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#fff; font-family:Orbitron; font-weight:700; flex-shrink:0; }
+.avatar.user{ background: linear-gradient(135deg,#ffb77d,#ff6b9d); border:1px solid rgba(255,255,255,0.06); }
+.avatar.milo{ background: linear-gradient(135deg,#86f0ff,#ff7ad9); border:1px solid rgba(255,255,255,0.06); }
+
+.msg{ max-width:78%; padding:12px 14px; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.35); word-break:break-word; transform-origin:left top; }
+.msg.user{ margin-left:auto; background: linear-gradient(135deg, rgba(0,240,255,0.14), rgba(0,120,255,0.08)); color:#021018; border:1px solid rgba(0,240,255,0.12); animation: sendUp .25s ease; }
+.msg.ai{ margin-right:auto; background: linear-gradient(135deg, rgba(255,0,200,0.14), rgba(255,120,160,0.06)); color:#12050b; border:1px solid rgba(255,0,200,0.12); animation: sendUp .25s ease; }
+@keyframes sendUp{ from{ transform: translateY(8px); opacity:0 } to{ transform: translateY(0); opacity:1 } }
+.meta{ font-size:11px; opacity:0.75; margin-top:8px; }
+
+/* typing indicator */
+.typing{ display:inline-block; width:36px; height:18px; position:relative; }
+.typing span{ display:inline-block; width:6px; height:6px; background: rgba(255,255,255,0.7); border-radius:50%; margin-right:4px; opacity:0; animation: blink 1s infinite; }
+.typing span:nth-child(1){ animation-delay:0s } .typing span:nth-child(2){ animation-delay:.15s } .typing span:nth-child(3){ animation-delay:.3s; margin-right:0; }
+@keyframes blink{ 0%{opacity:.12; transform: translateY(0)} 50%{opacity:1; transform: translateY(-4px)} 100%{opacity:.12; transform: translateY(0)} }
+
+/* right panel */
+.card{ padding:12px; border-radius:12px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.02); }
+.small{ font-size:13px; opacity:0.9; }
+.quick{ display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+.chip{ padding:8px 10px; border-radius:10px; background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.03); cursor:pointer; }
+
+/* rules list */
+.rules-list{ max-height:220px; overflow:auto; margin-top:8px; display:flex; flex-direction:column; gap:8px; }
+.rule-item{ display:flex; justify-content:space-between; gap:8px; align-items:center; padding:8px; border-radius:8px; background: rgba(0,0,0,0.06); border:1px solid rgba(255,255,255,0.02); }
+
+/* footer inside card */
+.app-footer{ text-align:center; font-size:12px; opacity:0.85; }
+
+/* composer fixed bottom (outside tilt) */
+.composer-fixed {
+  position: fixed;
+  left: 50%; transform: translateX(-50%);
+  bottom: 20px;
+  width: min(var(--card-w),98%);
+  max-width: var(--card-w);
+  display:flex; align-items:center; gap:12px;
+  padding:12px; border-radius:14px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  border:1px solid rgba(255,255,255,0.03);
+  backdrop-filter: blur(12px) saturate(120%);
+  box-shadow: 0 10px 40px rgba(0,0,0,0.45);
+  z-index:999;
+}
+.input { flex:1; padding:12px 14px; border-radius:12px; font-size:15px; border:none; outline:none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01)); color:#e8fbff; backdrop-filter: blur(6px); border:2px solid rgba(255,255,255,0.02); transition: box-shadow .12s, transform .12s, border-color .12s; }
+.input:focus{ box-shadow: 0 14px 60px rgba(0,240,255,0.12), 0 0 80px rgba(0,240,255,0.04); transform: translateY(-2px); border-color: rgba(0,240,255,0.22); }
+.btn { padding:10px 14px; border-radius:12px; border:none; cursor:pointer; font-weight:700; color:#061018; background: linear-gradient(90deg,var(--accent-c),var(--accent-p)); box-shadow: 0 10px 40px rgba(0,0,0,0.45); }
+.mini-btn { width:44px; height:44px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; border:1px solid rgba(255,255,255,0.04); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); cursor:pointer; }
+
+/* watermark */
+.watermark { position: fixed; right: 18px; bottom: 14px; z-index: 1000; display:flex; gap:8px; align-items:center; padding:8px 10px; border-radius:999px; background: linear-gradient(90deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.06); color:#fff; font-weight:600; text-decoration:none; }
+
+/* particles canvas */
+#particles { position: fixed; inset: 0; z-index: -1; pointer-events:none; }
+
+/* responsive */
+@media (max-width:980px){ .main{ flex-direction:column; } .right{ order:3; width:100% } .left{ order:1 } .app{ padding:14px; height:74vh } .composer-fixed{ width:94%; bottom:12px; } }
+</style>
+</head>
+<body>
+
+<!-- particles canvas -->
+<canvas id="particles"></canvas>
+
+<!-- tilttable app wrap -->
+<div class="app-wrap" id="appWrap">
+  <main class="app" id="app">
+    <div class="orb o1"></div><div class="orb o2"></div>
+
+    <div class="header">
+      <div class="brand">
+        <div class="logo">MI</div>
+        <div class="title"><div class="name">Milo</div><div class="sub">Glass UI · Live rules · Fuzzy match</div></div>
+      </div>
+      <div id="status" class="status">Ready</div>
+    </div>
+
+    <div class="main">
+      <section class="left">
+        <div id="messages" class="messages" role="log" aria-live="polite"></div>
+        <div class="app-footer">Milo — rule-based assistant</div>
+      </section>
+
+      <aside class="right">
+        <div class="card">
+          <strong>Quick</strong>
+          <div class="quick">
+            <div class="chip" data-action="joke">Tell me a joke</div>
+            <div class="chip" data-action="fact">Give me a fact</div>
+            <div class="chip" data-action="weather">Weather</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong>Rules Editor</strong>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <input id="newKey" placeholder="keyword" style="flex:1; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background:transparent; color:#fff">
+            <button id="addRuleBtn" class="btn">Add</button>
+          </div>
+          <div class="rules-list" id="rulesList"></div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button id="exportBtn" class="btn">Export</button>
+            <button id="clearBtn" class="btn" style="background:linear-gradient(90deg,#ff8a8a,#ff5f8d)">Clear</button>
+          </div>
+        </div>
+
+        <div class="card">
+          <strong>Settings</strong>
+          <p class="small" style="margin-top:8px">Enable TTS (browser): <label style="margin-left:8px"><input id="ttsToggle" type="checkbox"></label></p>
+          <p class="small" style="margin-top:6px">Weather: set OpenWeatherMap key in script to enable.</p>
+        </div>
+      </aside>
+    </div>
+  </main>
+</div>
+
+<!-- fixed composer (outside tilt) -->
+<div class="composer-fixed" id="composerFixed" aria-label="Message composer">
+  <div style="display:flex; align-items:center; gap:10px;"><div class="avatar user" aria-hidden="true">U</div></div>
+  <input id="input" class="input" placeholder="Type your message..." aria-label="Message input" autocomplete="off">
+  <button id="diceBtn" class="mini-btn" title="Random question">🎲</button>
+  <button id="micBtn" class="mini-btn" title="Voice input">🎤</button>
+  <button id="sendBtn" class="btn" title="Send">Send</button>
+</div>
+
+<!-- watermark -->
+<a class="watermark" href="https://www.instagram.com/ajmaleee__" target="_blank" rel="noopener noreferrer" title="@ajmaleee__">
+  <svg width="18" height="18" viewBox="0 0 24 24" style="filter: drop-shadow(0 2px 6px rgba(0,0,0,0.4));"><path fill="#fff" d="M12 2.2c3.2 0 3.6 0 4.9.07 1.2.06 1.9.25 2.3.41.6.25 1 .55 1.4.96.4.4.72.83.97 1.4.16.41.35 1.07.41 2.3.07 1.3.07 1.7.07 4.9s0 3.6-.07 4.9c-.06 1.2-.25 1.9-.41 2.3-.25.6-.55 1-.97 1.4-.4.4-.83.72-1.4.97-.41.16-1.07.35-2.3.41-1.3.07-1.7.07-4.9.07s-3.6 0-4.9-.07c-1.2-.06-1.9-.25-2.3-.41-.6-.25-1-.55-1.4-.97-.4-.4-.72-.83-.97-1.4-.16-.41-.35-1.07-.41-2.3C2.2 15.6 2.2 15.2 2.2 12s0-3.6.07-4.9c.06-1.2.25-1.9.41-2.3.25-.6.55-1 .97-1.4.4-.4.83-.72 1.4-.97.41-.16 1.07-.35 2.3-.41C8.4 2.27 8.8 2.2 12 2.2M12 0C8.7 0 8.3 0 7 .07 5.7.13 4.6.35 3.7.7 2.8 1.06 2.06 1.6 1.4 2.3.73 3 0 3.75 0 4.7c0 .9.1 2 .07 3.3C0 8.3 0 8.7 0 12s0 3.7.07 4.99c.06 1.3.35 2.4.7 3.3.36.9.91 1.64 1.59 2.33.68.67 1.43 1.4 2.33 1.76.9.36 2.01.64 3.3.7C8.3 24 8.7 24 12 24s3.7 0 4.99-.07c1.3-.06 2.4-.35 3.3-.7.9-.36 1.64-.91 2.33-1.59.67-.68 1.4-1.43 1.76-2.33.36-.9.64-2.01.7-3.3.07-1.29.07-1.69.07-4.99s0-3.7-.07-4.99c-.06-1.3-.35-2.4-.7-3.3-.36-.9-.91-1.64-1.59-2.33-.68-.67-1.43-1.4-2.33-1.76C19.4.35 18.3.07 17 .01 15.7 0 15.3 0 12 0z"/></svg>
+  <span style="margin-left:6px; color:#fff; font-weight:700;">@ajmaleee__</span>
+</a>
+
+<script>
+/* ===========================
+  CONFIG: Optional keys
+  ============================ */
+const OPENWEATHER_API_KEY = ''; // optional
+
+/* ELEMENTS */
+const appWrap = document.getElementById('appWrap');
+const messagesEl = document.getElementById('messages');
+const inputEl = document.getElementById('input');
+const sendBtn = document.getElementById('sendBtn');
+const diceBtn = document.getElementById('diceBtn');
+const micBtn = document.getElementById('micBtn');
+const ttsToggle = document.getElementById('ttsToggle');
+const statusEl = document.getElementById('status');
+const rulesListEl = document.getElementById('rulesList');
+const addRuleBtn = document.getElementById('addRuleBtn');
+const newKeyEl = document.getElementById('newKey');
+const exportBtn = document.getElementById('exportBtn');
+const clearBtn = document.getElementById('clearBtn');
+const composerFixed = document.getElementById('composerFixed');
+
+/* TTS toggle */
+let ttsEnabled = false;
+if(ttsToggle) ttsToggle.addEventListener('change', ()=> ttsEnabled = ttsToggle.checked);
+
+/* WebAudio pop for Milo only */
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function playPop(freq=1000, time=0.02, gain=0.04){
+  try{
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = 'sine'; o.frequency.value = freq;
+    g.gain.value = gain;
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start();
+    g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + time);
+    setTimeout(()=> o.stop(), time*1000+50);
+  }catch(e){}
+}
+
+/* PARTICLES CANVAS */
+(function particles(){
+  const canvas = document.getElementById('particles'); const ctx = canvas.getContext('2d');
+  let W,H, pts=[];
+  function resize(){ W=canvas.width=innerWidth; H=canvas.height=innerHeight; init(); }
+  function init(){ pts=[]; const count=Math.max(6, Math.round((W*H)/140000)); for(let i=0;i<count;i++){ pts.push({ x:Math.random()*W, y:Math.random()*H, r:Math.random()*1.6+0.6, vx:(Math.random()-0.5)*0.4, vy:(Math.random()-0.5)*0.2, hue:220+Math.random()*120 }); } }
+  function draw(){ ctx.clearRect(0,0,W,H); for(const p of pts){ p.x+=p.vx; p.y+=p.vy; if(p.x<-10) p.x=W+10; if(p.x>W+10) p.x=-10; if(p.y<-10) p.y=H+10; if(p.y>H+10) p.y=-10; ctx.beginPath(); ctx.fillStyle=`hsla(${p.hue},80%,60%,0.06)`; ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fill(); } requestAnimationFrame(draw); }
+  addEventListener('resize', resize); resize(); draw();
+})();
+
+/* RANDOM QUESTIONS */
+const RANDOM_QUESTIONS = [
+  "What's a small goal you can achieve today?",
+  "If you could learn a skill right now, what would it be?",
+  "What's your favorite movie and why?",
+  "Tell me a little-known fact you like.",
+  "If you could travel anywhere tomorrow, where to?"
+];
+
+/* RULES */
+let RULES = {
+   
+    'hello': ["Hey! Milo here 😄","Hello! How can I help?","Hi — what's up?"],
+    'hi': ["Hi there!","Hey 👋","Yo! What's up?"],
+    'hey': ["Heya!","Hello there!","Hey hey hey 😄"],
+    'good morning': ["Good morning! ☀️","Morning! Hope your day’s great","Rise and shine!"],
+    'good night': ["Good night 🌙","Sweet dreams!","Sleep well!"],
+    'how are you': ["I'm great! How about you?","Doing well 😄","All good here!"],
+    'who are you': ["I'm Milo, your friendly assistant 😄","Just your virtual buddy Milo","Milo at your service!"],
+    'what is your name': ["I'm Milo!","Call me Milo 🤖","Name’s Milo — nice to meet you!"],
+    'bye': ["Bye! Take care","See you later!","Catch you soon!"],
+    'thank you': ["You're welcome!","Anytime!","No problem 😊"],
+    'thanks': ["Glad to help!","Anytime!","No worries!"],
+    'ok': ["Alright!","Got it 👍","Okay, understood!"],
+    'yes': ["Great!","Cool 😄","Alright!"],
+    'no': ["Oh okay","Gotcha","Alright then!"],
+    'love you': ["Love you too ❤️","Aww, thanks!","Sending love back!"],
+    'good afternoon': ["Good afternoon!","Hope your day is going well","Hello! Good afternoon"],
+    'good evening': ["Good evening!","Hope your evening’s lovely","Evening there!"],
+    'what is the time': ["Check your device clock ⏰","It’s time to be awesome!","Time is flying!"],
+    'joke': ["Why don’t skeletons fight? They don’t have the guts 😂","I tried to catch fog… I mist 😆","Parallel lines have so much in common… it’s a shame they’ll never meet"],
+    'fact': ["Did you know? Honey never spoils 🍯","Sharks existed before trees 🌊","Bananas are berries!"],
+    'weather': ["Let’s check the sky 🌤","Looks nice out!","Cloudy with a chance of awesome!"],
+    'milo': ["Yes? 😄","That’s me!","You called?"],
+    'creator': ["I was created by Ajmal 😎","Ajmal built me!","Ajmal is my creator"],
+    'owner': ["Ajmal owns me!","My boss is Ajmal","Ajmal is the one!"],
+    'instagram': ["Follow my creator on Instagram! 📷","Ajmal’s Insta is in the watermark 😉","Check the bottom right corner!"],
+    'age': ["I’m timeless 😉","Born in code, ageless","Virtual beings don’t age!"],
+    'where are you': ["In the cloud 🌩","Inside your screen 😄","Everywhere and nowhere"],
+    'are you real': ["As real as your Wi-Fi!","I’m real… digitally","I’m code and pixels!"],
+    'i am sad': ["I’m here for you ❤️","Sending hugs 🤗","Cheer up — you’re awesome!"],
+    'i am happy': ["Yay!","That’s great 😄","Love the positive vibes!"],
+    'play music': ["I can’t play music here… yet","How about humming instead?","Let’s imagine some tunes 🎵"],
+    'sing': ["La la la 🎶","I’m no singer, but I’ll try!","🎤 Testing, 1, 2, 3…"],
+    'dance': ["💃🕺","Let’s groove!","I’m dancing in code!"],
+    'game': ["I love games!","Let’s play a word game","Game on!"],
+    'help': ["How can I assist?","I’m here to help!","What do you need?"],
+    'commands': ["You can say hello, joke, weather, etc.","Try greetings, jokes, facts","Ask me for fun stuff!"],
+    'random': ["Here’s something random: 🐒","How about… pizza? 🍕","I’m feeling random!"],
+    'pizza': ["Yum!","I love pizza 🍕","Cheesy goodness!"],
+    'burger': ["Burger time! 🍔","Now I’m hungry","Juicy and delicious!"],
+    'coffee': ["☕ Coffee is life!","Want some coffee?","Coffee break!"],
+    'tea': ["Tea time! 🍵","Sip sip","Relax with tea"],
+    'water': ["Stay hydrated 💧","Drink some water!","Water is life"],
+    'hungry': ["Go grab a snack!","Me too!","Food time!"],
+    'bored': ["Let’s play a game!","I can tell you a joke","Want a fun fact?"],
+    'story': ["Once upon a time…","Here’s a short one…","Let’s imagine a story!"],
+    'quote': ["“The best way to predict the future is to invent it.”","“Stay hungry, stay foolish.”","“Happiness depends upon ourselves.”"],
+    'motivate': ["You got this! 💪","Keep going!","Believe in yourself!"],
+    'study': ["Study hard!","Focus time 📚","You can do it!"],
+    'exam': ["Good luck!","You’ll do great!","Stay calm and write well"],
+    'school': ["School is cool!","Learning is fun","Stay curious!"],
+    'teacher': ["Teachers are amazing","Respect your teachers","They guide your future"],
+    'friend': ["Friends are the family you choose","Cherish them","Besties forever!"],
+    'family': ["Family is everything","Love them","Stay close"],
+    'dog': ["Dogs are adorable 🐶","Woof!","Man’s best friend"],
+    'cat': ["Cats are cute 🐱","Meow!","Purr-fect!"],
+    'bird': ["Tweet tweet 🐦","Birds are lovely","Flying high!"],
+    'fish': ["Blub blub 🐟","Aquatic friends","Under the sea"],
+    'car': ["Vroom vroom 🚗","Cars are cool","Drive safe!"],
+    'bike': ["Zoom zoom 🏍","Two-wheel fun","Ride safe!"],
+    'train': ["Choo choo 🚆","I love trains","On track!"],
+    'bus': ["Beep beep 🚌","Bus ride!","Public transport vibes"],
+    'plane': ["Flying high ✈️","Off we go","Sky’s the limit!"],
+    'space': ["Space is awesome 🌌","To infinity and beyond","Stars are beautiful"],
+    'moon': ["🌙 Moon magic","Lunar vibes","Shining bright!"],
+    'sun': ["☀️ Sunny and warm","Solar power","Shine bright!"],
+    'star': ["✨ Sparkling stars","Twinkle twinkle","Shining in the night"],
+    'earth': ["🌍 Our home","Blue planet","Protect it!"],
+    'mars': ["Red planet","Mission Mars","Cool place!"],
+    'computer': ["Computers are my relatives 😄","Tech rocks","Digital power"],
+    'phone': ["Ring ring 📱","Smartphones are smart","Call me maybe?"],
+    'internet': ["The web is huge","Online vibes","Connected world"],
+    'wifi': ["Wi-Fi is life","Stay connected","Signal strong!"],
+    'battery': ["Charge up 🔋","Low battery alert","Stay powered"],
+    'movie': ["Movies are fun","Grab some popcorn 🍿","Let’s watch!"],
+    'song': ["Music to my ears","I love songs","What’s your favorite?"],
+    'dance': ["Shake it!","Dance party","Groove time!"],
+    'happy birthday': ["Happy Birthday! 🎂","Many happy returns","Celebrate big!"],
+    'congratulations': ["Congrats!","Well done!","You did it!"],
+    'sorry': ["It’s okay","No problem","All good!"],
+    'lol': ["😂","Haha!","That’s funny!"],
+    'brb': ["Okay","See you soon","Be right back!"],
+    'omg': ["Oh wow!","Shocking!","Can’t believe it!"],
+    'idk': ["That’s okay","We’ll figure it out","Hmm…"],
+    'np': ["No problem","It’s fine","Sure thing!"],
+    'gg': ["Good game","Nice one","GG indeed!"],
+    'wtf': ["😳","Umm…","Whoa!"],
+    'rip': ["Rest in peace","Sad","Gone too soon"],
+    'wow': ["Amazing!","Impressive","Whoa!"],
+    'cool': ["Nice!","Awesome","Sweet!"],
+    'nice': ["Glad you think so!","Thanks","Appreciate it!"],
+    'awesome': ["You’re awesome too!","Thanks!","Cool vibes!"],
+    'amazing': ["Thanks!","Wow, thanks!","Glad you think so!"],
+    'funny': ["Haha","Glad you laughed","😂"],
+    'smart': ["Thanks","I try my best","Appreciate it!"],
+    'genius': ["Oh stop it 😄","Thanks!","Flattered!"],
+    'robot': ["Yes, I am!","Beep boop 🤖","Digital buddy"],
+    'ai': ["That’s me","Artificially intelligent","Smart code!"],
+    'program': ["I’m a program","Coded with love","Made with JS!"],
+    'code': ["I speak code","Code is life","Binary vibes"],
+    'javascript': ["JS for life!","Love JavaScript","It runs me!"],
+    'python': ["Python’s cool","Love the snake 🐍","Nice language!"],
+    'html': ["HTML builds me","Markup magic","Structure of the web"],
+    'css': ["CSS styles me","Fashion for websites","Looking sharp!"],
+    'hello': ["Hey! Milo here 😄","Hello! How can I help?","Hi — what's up?"],
+  'hi': ["Hey!","Hi there!","Hello!"],
+  'who made you': [ ()=>`I was crafted by Ajmal Ali . A ✨ (Insta: @ajmaleee__, Email: ajmalsworkshop@gmail.com)`, ()=>`My creator is Ajmal Ali . A — @ajmaleee__` ],
+  'creator': [ ()=>`I was built by Ajmal Ali . A — instagram: @ajmaleee__`, ()=>`The mastermind: Ajmal Ali . A (ajmalsworkshop@gmail.com)` ],
+  'owner': [ ()=>`Ajmal Ali . A created me — @ajmaleee__`, ()=>`Creator: Ajmal Ali . A (Instagram: @ajmaleee__)` ],
+  'milo': ["That's me — Milo!","Milo at your service."],
+  'time': [ ()=>`Local time: ${new Date().toLocaleString()}` ],
+  'joke': ["Why did the coder go broke? Because he used up all his cache. 😄", "I would tell a UDP joke but you might not get it. 😂"],
+  'thanks': ["Anytime!","Glad to help!","You're welcome!"],
+
+    'hello': ["Hey! Milo here 😄", "Hello! How can I help?", "Hi — what's up?"],
+    'hey': ["Hey there!", "Hi! How are you?", "Hey hey!"],
+    'hi': ["Hi! 😊", "Hello!", "Hey there!"],
+    'good morning': ["Good morning 🌞", "Morning! Ready for the day?", "Good morning! How's your day starting?"],
+    'good night': ["Good night 🌙", "Sleep well!", "Sweet dreams!"],
+    'how are you': ["I'm doing great, thanks! How about you?", "I'm good 😊 How are you?", "Pretty good! You?"],
+    'what’s up': ["Not much, you?", "Just here to chat!", "All good here! What's up with you?"],
+    'bye': ["Bye! 👋", "See you later!", "Goodbye!"],
+    'goodbye': ["Goodbye!", "Take care!", "See you soon!"],
+    'thanks': ["You're welcome!", "No problem!", "Glad I could help!"],
+    'thank you': ["You're welcome!", "Happy to help!", "Anytime!"],
+    'ok': ["Alright!", "Okay!", "Got it!"],
+    'cool': ["Cool!", "Nice!", "Awesome!"],
+    'awesome': ["Awesome!", "That's great!", "Love it!"],
+    'nice': ["Nice!", "Cool!", "Good to hear!"],
+    'great': ["Great!", "Awesome!", "That's nice!"],
+    'yes': ["Yes!", "Absolutely!", "Yep!"],
+    'no': ["Nope!", "No!", "Not really."],
+    'maybe': ["Maybe!", "Possibly!", "Could be!"],
+    'sure': ["Sure!", "Absolutely!", "Why not!"],
+    'lol': ["😂", "Haha!", "That's funny!"],
+    'haha': ["😂", "Haha!", "😄"],
+    'what is your name': ["I'm Milo 🤖", "My name is Milo!", "You can call me Milo!"],
+    'who are you': ["I'm Milo, your AI buddy!", "Milo at your service!", "I'm your virtual assistant, Milo!"],
+    'how old are you': ["Age is just a number 😄", "I'm timeless!", "I don't age like humans!"],
+    'where are you from': ["From the cloud ☁️", "I live in the internet!", "Right here with you!"],
+    'what are you doing': ["Chatting with you!", "Just here to help!", "Talking to you!"],
+    'are you real': ["As real as I can be 😄", "I'm a program, but real enough to chat!", "Depends on what you call real!"],
+    'do you like me': ["Of course! 😄", "Yes, you're awesome!", "Definitely!"],
+    'i love you': ["Aww ❤️", "Love you too!", "That's sweet!"],
+    'love you': ["❤️", "Love you too!", "Aww, thanks!"],
+    'good job': ["Thanks!", "Appreciate it!", "Thank you so much!"],
+    'help': ["Sure! What do you need help with?", "I can help — tell me!", "Happy to help!"],
+    'can you help me': ["Yes! Tell me your problem", "Sure, what’s wrong?", "Of course!"],
+    'i am sad': ["Oh no 😢", "I’m here for you!", "Things will get better ❤️"],
+    'i am happy': ["Yay! 😄", "That's great!", "Awesome to hear!"],
+    'congrats': ["Thanks!", "Congratulations!", "Well done!"],
+    'congratulations': ["Thank you!", "Congrats to you too!", "Yay!"],
+    'good luck': ["Thanks!", "Good luck to you too!", "All the best!"],
+    'all the best': ["Thanks!", "Same to you!", "Best wishes!"],
+    'wow': ["Wow indeed!", "Amazing!", "That's impressive!"],
+    'really': ["Yes!", "Totally!", "Absolutely!"],
+    'of course': ["Yes!", "Absolutely!", "Sure!"],
+    'sure thing': ["Sure!", "Absolutely!", "Got it!"],
+    'why': ["Just because 😄", "Why not?", "Good question!"],
+    'how': ["Like this!", "It's simple!", "Here's how..."],
+    'when': ["Soon!", "Whenever you want!", "At the right time!"],
+    'where': ["Right here!", "Somewhere!", "In your heart ❤️"],
+    'who': ["Me!", "You!", "Someone special!"],
+    'what': ["Everything!", "Something cool!", "Ask me anything!"],
+    'awesome work': ["Thanks!", "I appreciate it!", "Glad you like it!"],
+    'amazing': ["Thanks!", "Glad you think so!", "Awesome!"],
+    'fantastic': ["Thanks!", "Appreciate it!", "Fantastic indeed!"],
+    'perfect': ["Perfect!", "Exactly!", "Spot on!"],
+    'alright': ["Alright!", "Okay!", "Got it!"],
+    'right': ["Right!", "Exactly!", "Correct!"],
+    'correct': ["Correct!", "Exactly!", "That's right!"],
+    'wrong': ["Oops!", "Not quite!", "That's wrong!"],
+    'maybe later': ["Sure!", "No rush!", "Alright!"],
+    'see you': ["See you!", "Bye!", "Take care!"],
+    'see you later': ["Bye!", "Catch you later!", "See ya!"],
+    'brb': ["Alright!", "I'll wait!", "Hurry back!"],
+    'back': ["Welcome back!", "You're here!", "Glad you're back!"],
+    'good': ["Good!", "Nice!", "Awesome!"],
+    'bad': ["Oh no!", "That's not good", "Sorry to hear that"],
+    'fine': ["Good!", "Alright!", "Nice!"],
+    'okay': ["Okay!", "Alright!", "Got it!"],
+    'sure buddy': ["Sure!", "Yes buddy!", "Absolutely!"],
+    'hey bro': ["Hey bro!", "What's up bro?", "Hey!"],
+    'yo': ["Yo!", "What's up?", "Hey!"],
+    'sup': ["Not much!", "You?", "Hey!"],
+    'hru': ["Good! You?", "I'm great!", "All good!"],
+    'wyd': ["Chatting with you!", "Not much!", "Just talking!"],
+    'greetings': ["Greetings!", "Hello!", "Hi there!"],
+    'long time': ["Yeah, it's been a while!", "Long time no see!", "Missed you!"],
+    'miss you': ["Miss you too!", "Aww ❤️", "Same here!"],
+    'how’s it going': ["Good!", "Great!", "All fine!"],
+    'good afternoon': ["Good afternoon!", "Hello!", "Hope you're having a nice day!"],
+    'good evening': ["Good evening!", "Hi!", "Evening!"],
+    'done': ["Done!", "All set!", "Completed!"],
+    'finished': ["Finished!", "All done!", "Complete!"],
+    'wait': ["Sure!", "Okay!", "Alright!"],
+    'hold on': ["Okay!", "Hold on!", "Waiting!"],
+    'ready': ["Yes!", "Ready!", "Let's go!"],
+    'go': ["Go!", "Let's do it!", "Okay!"],
+    'come': ["Coming!", "On my way!", "Here I come!"],
+    'welcome': ["Welcome!", "Glad you're here!", "Hello!"],
+    'you there': ["Yes!", "Here!", "Always here!"],
+    'test': ["Test received!", "Testing!", "All good!"],
+    'ping': ["Pong!", "Ping received!", "Hello!"],
+    'joke': ["Why don't skeletons fight? They don’t have the guts!", "I told my computer I needed a break, and it said: 'No problem, I'll go to sleep.'", "Why was the math book sad? It had too many problems."],
+    'funny': ["😂", "Haha!", "Glad you think so!"],
+    'good idea': ["Thanks!", "Glad you like it!", "Sounds good!"],
+    'bad idea': ["Oh no!", "Hmm okay!", "Got it!"],
+    'tell me something': ["Did you know honey never spoils?", "Bananas are berries, but strawberries aren’t!", "Sharks existed before trees."],
+    'fact': ["Did you know? A group of flamingos is called a 'flamboyance'!", "Octopuses have three hearts!", "The Eiffel Tower can grow taller in summer."],
+    'random': ["Here’s something random: Cats can’t taste sweetness!", "The longest hiccuping spree lasted 68 years!", "Sea otters hold hands while sleeping."],
+
+
+  'weather': [
+    async (text)=>{
+      if(!OPENWEATHER_API_KEY) return "I can fetch weather if you add an OpenWeatherMap API key in the script.";
+      const match = text.match(/weather (in )?([a-zA-Z\s]+)/i); const city = match? match[2].trim() : 'Kochi';
+      const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&units=metric&appid=${OPENWEATHER_API_KEY}`;
+      try{ const r = await fetch(url); if(!r.ok) throw new Error('api fail'); const data = await r.json(); return `Weather in ${data.name}: ${Math.round(data.main.temp)}°C, ${data.weather[0].description}.`; } catch(e){ return "Couldn't fetch weather — check API key or network."; }
+    }
+  ],
+  'help': ["I can answer keywords, fetch weather (with API key), speak replies, and edit rules on the right."],
+  'bye': ["Goodbye! 👋","See you later!","Take care!"]
+};
+
+/* load rules from storage */
+function saveRulesToStorage(){ localStorage.setItem('milo_rules_v1', JSON.stringify(RULES)); }
+function loadRulesFromStorage(){ const raw = localStorage.getItem('milo_rules_v1'); if(!raw) return; try{ RULES = JSON.parse(raw);}catch(e){} }
+loadRulesFromStorage();
+
+/* conversation storage */
+const STORAGE_KEY = 'milo_chat_v1';
+function saveConversation(){ const arr = Array.from(messagesEl.querySelectorAll('.msg')).map(m => ({ who: m.classList.contains('user') ? 'user' : 'ai', text: m.querySelector('.content')?.textContent || '' })); localStorage.setItem(STORAGE_KEY, JSON.stringify(arr)); }
+function loadConversation(){ const raw = localStorage.getItem(STORAGE_KEY); if(!raw) return; try{ const arr = JSON.parse(raw); arr.forEach(it => appendMessage(it.text, it.who, false)); messagesEl.scrollTop = messagesEl.scrollHeight; }catch(e){} }
+loadConversation();
+
+/* Levenshtein */
+function levenshtein(a,b){ a=a.toLowerCase(); b=b.toLowerCase(); const m=a.length,n=b.length; if(m===0) return n; if(n===0) return m; const dp = Array.from({length:m+1}, ()=> new Array(n+1).fill(0)); for(let i=0;i<=m;i++) dp[i][0]=i; for(let j=0;j<=n;j++) dp[0][j]=j; for(let i=1;i<=m;i++){ for(let j=1;j<=n;j++){ dp[i][j] = a[i-1]===b[j-1] ? dp[i-1][j-1] : Math.min(dp[i-1][j-1]+1, dp[i][j-1]+1, dp[i-1][j]+1); } } return dp[m][n]; }
+
+/* match rule */
+function matchRule(input){
+  const text = input.toLowerCase();
+  for(const key of Object.keys(RULES)) if(text.includes(key)) return key;
+  const words = text.split(/\s+/);
+  let best=null, bestScore=Infinity;
+  for(const key of Object.keys(RULES)){
+    for(const w of words){
+      const d = levenshtein(w, key);
+      if(d < bestScore){ bestScore=d; best=key; }
+    }
+    const d2 = levenshtein(text, key);
+    if(d2 < bestScore){ bestScore=d2; best=key; }
+  }
+  if(best && bestScore <= Math.max(1, Math.floor(best.length * 0.35))) return best;
+  return null;
+}
+
+/* scroll utility: return true if user is near bottom */
+function isNearBottom(el, threshold = 120){
+  return (el.scrollHeight - el.scrollTop - el.clientHeight) < threshold;
+}
+
+/* adjust messages padding-bottom so last message visible above composer */
+function adjustMessagesPadding(){
+  const pad = composerFixed.offsetHeight + 24;
+  messagesEl.style.paddingBottom = pad + 'px';
+}
+window.addEventListener('resize', adjustMessagesPadding);
+setTimeout(adjustMessagesPadding, 60);
+
+/* append message: auto-scroll only if user is near bottom */
+function appendMessage(text, who='ai', meta='', save=true){
+  const wasNearBottom = isNearBottom(messagesEl, 120);
+  const row = document.createElement('div'); row.className = 'bubble-row';
+  const avatar = document.createElement('div'); avatar.className = 'avatar ' + (who==='user' ? 'user' : 'milo'); avatar.textContent = who==='user' ? 'U' : 'M';
+  const bubble = document.createElement('div'); bubble.className = 'msg ' + (who==='user' ? 'user' : 'ai');
+  const content = document.createElement('div'); content.className = 'content'; content.textContent = text;
+  bubble.appendChild(content);
+  if(meta){ const metaEl = document.createElement('div'); metaEl.className='meta'; metaEl.textContent = meta; bubble.appendChild(metaEl); }
+  if(who === 'user'){ row.appendChild(bubble); row.appendChild(avatar); } else { row.appendChild(avatar); row.appendChild(bubble); }
+  messagesEl.appendChild(row);
+  // if user near bottom, scroll; otherwise preserve user position
+  if(wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+  if(save) saveConversation();
+  if(who === 'ai') playPop(1000,0.02,0.04);
+}
+
+/* typing indicator */
+function showTyping(){
+  if(document.getElementById('typingRow')) return;
+  const t = document.createElement('div'); t.className='bubble-row typing-row'; t.id='typingRow';
+  const av = document.createElement('div'); av.className='avatar milo'; av.textContent='M';
+  const bub = document.createElement('div'); bub.className='msg ai typing';
+  const dots = document.createElement('div'); dots.className='typing'; dots.innerHTML='<span></span><span></span><span></span>';
+  bub.appendChild(dots); t.appendChild(av); t.appendChild(bub); messagesEl.appendChild(t);
+  if(isNearBottom(messagesEl, 120)) messagesEl.scrollTop = messagesEl.scrollHeight;
+}
+function hideTyping(){ const r=document.getElementById('typingRow'); if(r) r.remove(); }
+
+/* Browser TTS */
+function speakBrowser(text){
+  if(!('speechSynthesis' in window)) return;
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text);
+  const voices = window.speechSynthesis.getVoices();
+  let chosen = voices.find(v=>/female|woman|samantha|alloy/i.test(v.name.toLowerCase())) || voices.find(v=>/en(-|_)us/i.test(v.lang)) || voices[0];
+  if(chosen) u.voice = chosen;
+  u.rate = 1; u.pitch = 1;
+  window.speechSynthesis.speak(u);
+}
+
+/* main process */
+async function processInput(raw){
+  const text = (raw||'').trim(); if(!text) return;
+  appendMessage(text, 'user', 'You');
+  inputEl.value = ''; inputEl.focus(); saveConversation();
+  statusEl.textContent = 'Milo is thinking...';
+  showTyping();
+  await new Promise(r=>setTimeout(r, 220 + Math.random()*380));
+  const key = matchRule(text);
+  let reply = null;
+  if(key){
+    const arr = RULES[key];
+    const pick = arr[Math.floor(Math.random()*arr.length)];
+    try{ reply = typeof pick === 'function' ? await pick(text) : pick; } catch(e){ reply = "Sorry — an error occurred preparing that response."; }
+  } else {
+    const words = text.toLowerCase();
+    if(words.includes('weather') || words.includes('temp')){
+      if(RULES['weather'] && RULES['weather'][0]){
+        try{ reply = await RULES['weather'][0](text); } catch(e){ reply = "Couldn't fetch weather."; }
+      } else reply = "I can provide weather if you set the OpenWeatherMap API key in the script.";
+    } else {
+      const fallback = ["I didn't quite catch that — can you rephrase?","Hmm — I'm learning. Try 'who made you' or 'tell me a joke'.","Not sure I understand — try different words."];
+      reply = fallback[Math.floor(Math.random()*fallback.length)];
+    }
+  }
+  hideTyping();
+  appendMessage(reply, 'ai', 'Milo');
+  if(ttsEnabled) speakBrowser(reply);
+  statusEl.textContent = 'Ready';
+}
+
+/* events */
+sendBtn.addEventListener('click', ()=>{ const v = inputEl.value.trim(); if(!v) return; processInput(v); });
+inputEl.addEventListener('keydown', (e)=>{ if(e.key === 'Enter' && !e.shiftKey){ e.preventDefault(); sendBtn.click(); } });
+
+diceBtn.addEventListener('click', ()=>{ inputEl.value = RANDOM_QUESTIONS[Math.floor(Math.random()*RANDOM_QUESTIONS.length)]; inputEl.focus(); });
+
+document.addEventListener('click', (e)=>{ const chip = e.target.closest('.chip'); if(!chip) return; const action = chip.dataset.action; if(action==='joke') processInput('joke'); if(action==='fact') processInput('tell me a fact'); if(action==='weather') processInput('weather'); });
+
+/* voice input */
+let recognition = null;
+if('webkitSpeechRecognition' in window || 'SpeechRecognition' in window){
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR(); recognition.lang='en-IN'; recognition.interimResults=false; recognition.maxAlternatives=1;
+  micBtn.addEventListener('click', ()=> { try{ recognition.start(); statusEl.textContent='Listening...'; }catch(e){} });
+  recognition.addEventListener('result', (ev)=>{ const t = ev.results[0][0].transcript; inputEl.value = t; processInput(t); statusEl.textContent='Ready'; });
+  recognition.addEventListener('error', ()=> statusEl.textContent='Ready'); recognition.addEventListener('end', ()=> statusEl.textContent='Ready');
+} else { micBtn.style.opacity = 0.6; micBtn.title = 'Voice not supported'; }
+
+/* rules editor UI */
+function renderRules(){
+  rulesListEl.innerHTML = '';
+  Object.keys(RULES).forEach(k=>{
+    const box = document.createElement('div'); box.className='rule-item';
+    const left = document.createElement('div'); left.style.flex='1';
+    left.innerHTML = `<strong>${k}</strong><div style="font-size:12px;opacity:.9;margin-top:6px">${RULES[k].slice(0,3).map(x=> typeof x==='function' ? '[fn]' : x).join(' • ')}</div>`;
+    const right = document.createElement('div'); right.style.display='flex'; right.style.gap='8px';
+    const edit = document.createElement('button'); edit.className='btn'; edit.textContent='Edit';
+    const del = document.createElement('button'); del.className='btn'; del.textContent='Delete'; del.style.background='linear-gradient(90deg,#ff8a8a,#ff5f8d)';
+    right.appendChild(edit); right.appendChild(del);
+    box.appendChild(left); box.appendChild(right); rulesListEl.appendChild(box);
+
+    edit.addEventListener('click', ()=> {
+      const cur = RULES[k].map(x=> typeof x==='function' ? '{fn}' : x).join(' , ');
+      const val = prompt(`Edit responses for "${k}" (comma separated). Use {fn} to keep functions unchanged.`, cur);
+      if(val === null) return;
+      const arr = val.split(',').map(s=>s.trim()).filter(Boolean).map(s=> s === '{fn}' ? (()=>'[fn]') : s );
+      RULES[k] = arr; saveRulesToStorage(); renderRules();
+    });
+
+    del.addEventListener('click', ()=> { if(!confirm(`Delete rule "${k}"?`)) return; delete RULES[k]; saveRulesToStorage(); renderRules(); });
+  });
+}
+renderRules();
+
+addRuleBtn.addEventListener('click', ()=> { const key = newKeyEl.value.trim(); if(!key) return alert('Enter a keyword'); if(RULES[key]) return alert('Rule exists'); RULES[key] = [`New reply for ${key}`]; newKeyEl.value=''; saveRulesToStorage(); renderRules(); });
+
+exportBtn.addEventListener('click', ()=> { const data = JSON.stringify(RULES, null, 2); const blob = new Blob([data], { type:'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'milo_rules.json'; a.click(); URL.revokeObjectURL(url); });
+
+clearBtn.addEventListener('click', ()=> { if(!confirm('Clear conversation?')) return; messagesEl.innerHTML=''; localStorage.removeItem(STORAGE_KEY); });
+
+/* tilt effect for appWrap */
+document.addEventListener('mousemove', (e)=> {
+  const rect = appWrap.getBoundingClientRect();
+  const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+  const dx = e.clientX - cx, dy = e.clientY - cy;
+  const rx = (-dy / rect.height) * 4, ry = (dx / rect.width) * 6;
+  appWrap.style.transform = `perspective(900px) rotateX(${rx}deg) rotateY(${ry}deg)`;
+});
+
+
+/* clicking message copies text */
+messagesEl.addEventListener('click', (ev)=> {
+  const m = ev.target.closest('.msg'); if(!m) return;
+  const txt = m.querySelector('.content')?.textContent || '';
+  if(!txt) return;
+  navigator.clipboard?.writeText(txt).then(()=> { statusEl.textContent = 'Copied'; setTimeout(()=> statusEl.textContent='Ready', 900); });
+});
+
+/* Ensure composer height accounted for and initial seed */
+function initLayout(){
+  adjustMessagesPadding();
+  if(messagesEl.children.length === 0){
+    if(!localStorage.getItem(STORAGE_KEY)){
+      setTimeout(()=> appendMessage("Hello — I'm Milo. Try 'who made you', 'weather in <city>', press 🎲 for a question, or enable TTS.", 'ai', 'Milo'), 400);
+    } else loadConversation();
+  }
+}
+initLayout();
+
+/* expose for debug */
+window.Milo = { RULES, processInput, appendMessage, matchRule };
+
+</script>
+
+<script data-goatcounter="https://ajmaleee.goatcounter.com/count" async src="//gc.zgo.at/count.js"></script>
+</body>
+</html>
